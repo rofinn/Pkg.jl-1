@@ -17,7 +17,7 @@ using Pkg3.Operations
 ############
 @enum(CommandKind, CMD_HELP, CMD_STATUS, CMD_SEARCH, CMD_ADD, CMD_RM, CMD_UP,
                    CMD_TEST, CMD_GC, CMD_PREVIEW, CMD_INIT, CMD_BUILD, CMD_FREE,
-                   CMD_PIN, CMD_CHECKOUT, CMD_DEVELOP)
+                   CMD_PIN, CMD_CHECKOUT, CMD_DEVELOP, CMD_CREATE)
 
 struct Command
     kind::CommandKind
@@ -54,6 +54,7 @@ const cmds = Dict(
     "checkout"  => CMD_CHECKOUT, # deprecated
     "develop"   => CMD_DEVELOP,
     "dev"       => CMD_DEVELOP,
+    "create"    => CMD_CREATE,
 )
 
 ###########
@@ -247,7 +248,8 @@ function do_cmd!(tokens::Vector{Token}, repl)
     cmd.kind == CMD_PIN      ? Base.invokelatest(     do_pin!, ctx, tokens) :
     cmd.kind == CMD_FREE     ? Base.invokelatest(    do_free!, ctx, tokens) :
     cmd.kind == CMD_CHECKOUT ? Base.invokelatest(do_checkout!, ctx, tokens) :
-    cmd.kind == CMD_DEVELOP  ? Base.invokelatest(do_develop!,  ctx, tokens) :
+    cmd.kind == CMD_DEVELOP  ? Base.invokelatest( do_develop!, ctx, tokens) :
+    cmd.kind == CMD_CREATE   ? Base.invokelatest(  do_create!, ctx, tokens) :
         cmderror("`$cmd` command not yet implemented")
     return
 end
@@ -273,6 +275,8 @@ What action you want the package manager to take:
 `help`: show this message
 
 `status`: summarize contents of and changes to environment
+
+`create`: create a new project
 
 `add`: add packages to project
 
@@ -321,7 +325,13 @@ const helps = Dict(
     any changes to manifest packages not already listed. In `--project` mode, the
     status of the project file is summarized. In `--project` mode, the status of
     the project file is summarized.
-    """, CMD_ADD => md"""
+    """, CMD_CREATE => md"""
+
+        create name
+
+    Create a project called `name` in the current folder.
+    """,
+    CMD_ADD => md"""
 
         add pkg[=uuid] [@version] ...
 
@@ -665,6 +675,20 @@ function do_init!(ctx::Context, tokens::Vector{Token})
         cmderror("`init` does currently not take any arguments")
     end
     Pkg3.API.init(ctx)
+end
+
+function do_create!(ctx::Context, tokens::Vector{Token})
+    local pkg
+    while !isempty(tokens)
+        token = popfirst!(tokens)
+        if token isa String
+            pkg = token
+            break # TODO: error message?
+        else
+            cmderror("`create` takes a name of the package to create")
+        end
+    end
+    Pkg3.API.create(pkg)
 end
 
 

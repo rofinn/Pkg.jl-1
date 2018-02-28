@@ -14,6 +14,8 @@ using Pkg3.TOML
 
 preview_info() = @info("In preview mode")
 
+include("create.jl")
+
 add(pkg::Union{String, PackageSpec}; kwargs...)               = add([pkg]; kwargs...)
 add(pkgs::Vector{String}; kwargs...)      = add([PackageSpec(pkg) for pkg in pkgs]; kwargs...)
 add(pkgs::Vector{PackageSpec}; kwargs...) = add(Context(), pkgs; kwargs...)
