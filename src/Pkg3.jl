@@ -39,6 +39,7 @@ include("Resolve.jl")
 include("Operations.jl")
 include("API.jl")
 include("REPLMode.jl")
+include("Registry.jl")
 
 import .API: add, rm, up, test, gc, init, build, installed, pin, free, checkout, develop, create
 const update = up
