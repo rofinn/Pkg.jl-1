@@ -1,18 +1,24 @@
-function create(pkg::String)
-    isdir(pkg) && cmderror("$(abspath(pkg)) already exists")
-    project(pkg)
-    entrypoint(pkg)
+function create(path::String)
+    dir, pkg = dirname(path), basename(path)
+    isdir(path) && cmderror("$(abspath(path)) already exists")
+    project(pkg, dir)
+    entrypoint(pkg, dir)
+    LibGit2.init(path)
+    repo = LibGit2.GitRepo(path)
+    LibGit2.add!(repo, "*")
+    @info "Committing generated files"
+    LibGit2.commit(repo, "created project $pkg")
 end
 
-function genfile(f::Function, pkg::String, file::String)
-    path = joinpath(pkg, file)
-    @info "Generating $(pkg)/$(file)"
+function genfile(f::Function, pkg::String, dir::String, file::String)
+    path = joinpath(dir, pkg, file)
+    @info "Generating $path"
     mkpath(dirname(path))
     open(f, path, "w")
     return
 end
 
-function project(pkg::String)
+function project(pkg::String, dir::String)
     name = email = nothing
     gitname = LibGit2.getconfig("user.name", "")
     isempty(gitname) || (name = gitname)
@@ -40,7 +46,7 @@ function project(pkg::String)
 
     authorstr = "[\"$name " * (email == nothing ? "" : "<$email>") * "\"]"
 
-    genfile(pkg, "Project.toml") do io
+    genfile(pkg, dir, "Project.toml") do io
         print(io,
             """
             name = "$pkg"
@@ -54,8 +60,8 @@ function project(pkg::String)
     end
 end
 
-function entrypoint(pkg::String)
-    genfile(pkg, "src/$pkg.jl") do io
+function entrypoint(pkg::String, dir)
+    genfile(pkg, dir, "src/$pkg.jl") do io
         print(io,
            """
             module $pkg
