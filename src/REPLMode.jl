@@ -6,18 +6,15 @@ using UUIDs
 import REPL
 import REPL: LineEdit, REPLCompletions
 
-import Pkg3
-import Pkg3: devdir, print_first_command_header
-using Pkg3.Types
-using Pkg3.Display
-using Pkg3.Operations
+import ..devdir, ..print_first_command_header, ..API
+using ..Types, ..Display, ..Operations
 
 ############
 # Commands #
 ############
 @enum(CommandKind, CMD_HELP, CMD_STATUS, CMD_SEARCH, CMD_ADD, CMD_RM, CMD_UP,
                    CMD_TEST, CMD_GC, CMD_PREVIEW, CMD_INIT, CMD_BUILD, CMD_FREE,
-                   CMD_PIN, CMD_CHECKOUT, CMD_DEVELOP)
+                   CMD_PIN, CMD_CHECKOUT, CMD_DEVELOP, CMD_CREATE)
 
 struct Command
     kind::CommandKind
@@ -54,6 +51,7 @@ const cmds = Dict(
     "checkout"  => CMD_CHECKOUT, # deprecated
     "develop"   => CMD_DEVELOP,
     "dev"       => CMD_DEVELOP,
+    "create"    => CMD_CREATE,
 )
 
 ###########
@@ -247,7 +245,8 @@ function do_cmd!(tokens::Vector{Token}, repl)
     cmd.kind == CMD_PIN      ? Base.invokelatest(     do_pin!, ctx, tokens) :
     cmd.kind == CMD_FREE     ? Base.invokelatest(    do_free!, ctx, tokens) :
     cmd.kind == CMD_CHECKOUT ? Base.invokelatest(do_checkout!, ctx, tokens) :
-    cmd.kind == CMD_DEVELOP  ? Base.invokelatest(do_develop!,  ctx, tokens) :
+    cmd.kind == CMD_DEVELOP  ? Base.invokelatest( do_develop!, ctx, tokens) :
+    cmd.kind == CMD_CREATE   ? Base.invokelatest(  do_create!, ctx, tokens) :
         cmderror("`$cmd` command not yet implemented")
     return
 end
@@ -273,6 +272,8 @@ What action you want the package manager to take:
 `help`: show this message
 
 `status`: summarize contents of and changes to environment
+
+`create`: create a new project
 
 `add`: add packages to project
 
@@ -321,7 +322,13 @@ const helps = Dict(
     any changes to manifest packages not already listed. In `--project` mode, the
     status of the project file is summarized. In `--project` mode, the status of
     the project file is summarized.
-    """, CMD_ADD => md"""
+    """, CMD_CREATE => md"""
+
+        create name
+
+    Create a project called `name` in the current folder.
+    """,
+    CMD_ADD => md"""
 
         add pkg[=uuid] [@version] ...
 
@@ -471,7 +478,7 @@ function do_rm!(ctx::Context, tokens::Vector{Token})
     end
     isempty(pkgs) &&
         cmderror("`rm` – list packages to remove")
-    Pkg3.API.rm(ctx, pkgs)
+    API.rm(ctx, pkgs)
 end
 
 function do_add!(ctx::Context, tokens::Vector{Token})
@@ -495,7 +502,7 @@ function do_add!(ctx::Context, tokens::Vector{Token})
         end
         prev_token_was_package = parsed_package
     end
-    Pkg3.API.add(ctx, pkgs)
+    API.add(ctx, pkgs)
 end
 
 function do_up!(ctx::Context, tokens::Vector{Token})
@@ -529,7 +536,7 @@ function do_up!(ctx::Context, tokens::Vector{Token})
         end
         prev_token_was_package = parsed_package
     end
-    Pkg3.API.up(ctx, pkgs; level=level, mode=mode)
+    API.up(ctx, pkgs; level=level, mode=mode)
 end
 
 function do_pin!(ctx::Context, tokens::Vector{Token})
@@ -553,7 +560,7 @@ function do_pin!(ctx::Context, tokens::Vector{Token})
         end
         prev_token_was_package = parsed_package
     end
-    Pkg3.API.pin(ctx, pkgs)
+    API.pin(ctx, pkgs)
 end
 
 function do_free!(ctx::Context, tokens::Vector{Token})
@@ -566,7 +573,7 @@ function do_free!(ctx::Context, tokens::Vector{Token})
             cmderror("free only takes a list of packages")
         end
     end
-    Pkg3.API.free(ctx, pkgs)
+    API.free(ctx, pkgs)
 end
 
 function do_checkout!(ctx::Context, tokens::Vector{Token})
@@ -597,7 +604,7 @@ function do_develop!(ctx::Context, tokens::Vector{Token})
         end
         prev_token_was_package = parsed_package
     end
-    Pkg3.API.develop(ctx, pkgs_branches; path = path)
+    API.develop(ctx, pkgs_branches; path = path)
 end
 
 function do_status!(ctx::Context, tokens::Vector{Token})
@@ -614,7 +621,7 @@ function do_status!(ctx::Context, tokens::Vector{Token})
             cmderror("`status` does not take arguments")
         end
     end
-    Pkg3.Display.status(ctx, mode)
+    Display.status(ctx, mode)
 end
 
 # TODO , test recursive dependencies as on option.
@@ -639,12 +646,12 @@ function do_test!(ctx::Context, tokens::Vector{Token})
         end
     end
     isempty(pkgs) && cmderror("`test` takes a set of packages")
-    Pkg3.API.test(ctx, pkgs; coverage = coverage)
+    API.test(ctx, pkgs; coverage = coverage)
 end
 
 function do_gc!(ctx::Context, tokens::Vector{Token})
     !isempty(tokens) && cmderror("`gc` does not take any arguments")
-    Pkg3.API.gc(ctx)
+    API.gc(ctx)
 end
 
 function do_build!(ctx::Context, tokens::Vector{Token})
@@ -657,14 +664,28 @@ function do_build!(ctx::Context, tokens::Vector{Token})
             cmderror("`build` only takes a list of packages")
         end
     end
-    Pkg3.API.build(ctx, pkgs)
+    API.build(ctx, pkgs)
 end
 
 function do_init!(ctx::Context, tokens::Vector{Token})
     if !isempty(tokens)
         cmderror("`init` does currently not take any arguments")
     end
-    Pkg3.API.init(ctx)
+    API.init(ctx)
+end
+
+function do_create!(ctx::Context, tokens::Vector{Token})
+    local pkg
+    while !isempty(tokens)
+        token = popfirst!(tokens)
+        if token isa String
+            pkg = token
+            break # TODO: error message?
+        else
+            cmderror("`create` takes a name of the package to create")
+        end
+    end
+    API.create(pkg)
 end
 
 
