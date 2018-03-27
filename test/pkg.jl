@@ -15,6 +15,46 @@ include("utils.jl")
 
 const TEST_PKG = (name = "Example", uuid = UUID("7876af07-990d-54b4-ab0e-23690620f79a"))
 
+import Pkg3.Types: semver_spec, VersionSpec
+@testset "semver notation" begin
+    @test semver_spec("^1.2.3") == VersionSpec("1.2.3-1")
+    @test semver_spec("^1.2")   == VersionSpec("1.2.0-1")
+    @test semver_spec("^1")     == VersionSpec("1.0.0-1")
+    @test semver_spec("^0.2.3") == VersionSpec("0.2.3-0.2")
+    @test semver_spec("^0.0.3") == VersionSpec("0.0.3-0.0.3")
+    @test semver_spec("^0.0")   == VersionSpec("0.0.0-0.0")
+    @test semver_spec("^0")     == VersionSpec("0.0.0-0")
+    @test semver_spec("~1.2.3") == VersionSpec("1.2.3-1.2")
+    @test semver_spec("~1.2")   == VersionSpec("1.2.0-1.2")
+    @test semver_spec("~1")     == VersionSpec("1.0.0-1")
+    @test semver_spec("1.2.3")  == semver_spec("^1.2.3")
+    @test semver_spec("1.2")    == semver_spec("^1.2")
+    @test semver_spec("1")      == semver_spec("^1")
+    @test semver_spec("0.0.3")  == semver_spec("^0.0.3")
+    @test semver_spec("0")      == semver_spec("^0")
+
+    @test   v"1.5.2"  in semver_spec("1.2.3")
+    @test   v"1.2.3"  in semver_spec("1.2.3")
+    @test !(v"2.0.0"  in semver_spec("1.2.3"))
+    @test !(v"1.2.2"  in semver_spec("1.2.3"))
+    @test   v"1.2.99" in semver_spec("~1.2.3")
+    @test   v"1.2.3"  in semver_spec("~1.2.3")
+    @test !(v"1.3"    in semver_spec("~1.2.3"))
+    @test  v"1.2.0"   in semver_spec("1.2")
+    @test  v"1.9.9"   in semver_spec("1.2")
+    @test !(v"2.0.0"  in semver_spec("1.2"))
+    @test !(v"1.1.9"  in semver_spec("1.2"))
+    @test   v"0.2.3"  in semver_spec("0.2.3")
+    @test !(v"0.3.0"  in semver_spec("0.2.3"))
+    @test !(v"0.2.2"  in semver_spec("0.2.3"))
+    @test   v"0.0.0"  in semver_spec("0")
+    @test  v"0.99.0"  in semver_spec("0")
+    @test !(v"1.0.0"  in semver_spec("0"))
+    @test  v"0.0.0"   in semver_spec("0.0")
+    @test  v"0.0.99"  in semver_spec("0.0")
+    @test !(v"0.1.0"  in semver_spec("0.0"))
+end
+
 temp_pkg_dir() do project_path
     @testset "simple add and remove with preview" begin
         Pkg3.init(project_path)

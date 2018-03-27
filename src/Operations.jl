@@ -64,9 +64,12 @@ function set_maximum_version_registry!(env::EnvCache, pkg::PackageSpec)
         pathvers = keys(load_versions(path))
         union!(pkgversions, pathvers)
     end
-    length(pkgversions) == 0 && return VersionNumber(0)
-    max_version = maximum(pkgversions)
-    pkg.version = VersionNumber(max_version.major, max_version.minor, max_version.patch, max_version.prerelease, ("",))
+    if length(pkgversions) == 0
+        pkg.version = VersionNumber(0)
+    else
+        max_version = maximum(pkgversions)
+        pkg.version = VersionNumber(max_version.major, max_version.minor, max_version.patch, max_version.prerelease, ("",))
+    end
 end
 
 # This also sets the .path field for fixed packages in `pkgs`
@@ -126,11 +129,12 @@ end
 
 function collect_project!(pkg::PackageSpec, path::String, fix_deps_map::Dict{UUID,Vector{PackageSpec}})
     project_file = joinpath(path, "Project.toml")
-    !isfile(project_file) && return false
     fix_deps_map[pkg.uuid] = valtype(fix_deps_map)()
+    !isfile(project_file) && return false
     project = read_project(project_file)
+    compat = get(project, "compatibility", Dict())
     for (deppkg_name, uuid) in project["deps"]
-        vspec = VersionSpec() # TODO: Update with compatibility from Project
+        vspec = haskey(compat, deppkg_name) ? Types.semver_spec(compat["deppkg_name"]) : VersionSpec()
         deppkg = PackageSpec(deppkg_name, UUID(uuid), vspec)
         push!(fix_deps_map[pkg.uuid], deppkg)
     end
@@ -254,20 +258,30 @@ function resolve_versions!(ctx::Context, pkgs::Vector{PackageSpec})::Dict{UUID,V
     for (name::String, uuidstr::String) in ctx.env.project["deps"]
         uuid = UUID(uuidstr)
         uuid_to_name[uuid] = name
-        info = manifest_info(ctx.env, uuid)
-        info == nothing && continue
-        haskey(info, "version") || continue # stdlibs might not have a version
-        ver = VersionNumber(info["version"])
+
         uuid_idx = findfirst(isequal(uuid), uuids)
+        ver = VersionSpec()
         if uuid_idx != nothing
             pkg = pkgs[uuid_idx]
-            if pkg.special_action != PKGSPEC_FREED && get(info, "pinned", false)
-                # This is a pinned package, fix its version
-                pkg.version = ver
+            info = manifest_info(ctx.env, uuid)
+            if info !== nothing && haskey(info, "version") # stdlibs might not have a version
+                ver = VersionNumber(info["version"])
+                    if pkg.special_action != PKGSPEC_FREED && get(info, "pinned", false)
+                        # This is a pinned package, fix its version
+                        pkg.version = ver
+                end
             end
         else
-            push!(pkgs, PackageSpec(name, uuid, ver))
+            pkg = PackageSpec(name, uuid, ver)
+            push!(pkgs, pkg)
         end
+        proj_compat = Types.project_compatibility(ctx, name)
+        v = intersect(pkg.version, proj_compat)
+        if isempty(v)
+            cmderror(string("intersection between project compatibility $(proj_compat) ",
+                            "and package version $(pkg.version) is empty"))
+        end
+        pkg.version = v
     end
     # construct data structures for resolver and call it
     reqs = Requires(pkg.uuid => VersionSpec(pkg.version) for pkg in pkgs if pkg.uuid ≠ uuid_julia)
@@ -955,21 +969,25 @@ function up(ctx::Context, pkgs::Vector{PackageSpec})
         pkg.version isa UpgradeLevel || continue
         level = pkg.version
         info = manifest_info(ctx.env, pkg.uuid)
-        if haskey(info, "repo-url")
-            pkg.repo = Types.GitRepo(info["repo-url"], info["repo-rev"])
-            new = handle_repos_add!(ctx, [pkg]; upgrade_or_add = (level == UPLEVEL_MAJOR))
-            append!(new_git, new)
-        else
-            ver = VersionNumber(info["version"])
-            if level == UPLEVEL_FIXED
-                pkg.version = VersionNumber(info["version"])
+        if info != nothing
+            if haskey(info, "repo-url")
+                pkg.repo = Types.GitRepo(info["repo-url"], info["repo-rev"])
+                new = handle_repos_add!(ctx, [pkg]; upgrade_or_add = (level == UPLEVEL_MAJOR))
+                append!(new_git, new)
             else
-                r = level == UPLEVEL_PATCH ? VersionRange(ver.major, ver.minor) :
-                    level == UPLEVEL_MINOR ? VersionRange(ver.major) :
-                    level == UPLEVEL_MAJOR ? VersionRange() :
-                        error("unexpected upgrade level: $level")
-                pkg.version = VersionSpec(r)
+                ver = VersionNumber(info["version"])
+                if level == UPLEVEL_FIXED
+                    pkg.version = VersionNumber(info["version"])
+                else
+                    r = level == UPLEVEL_PATCH ? VersionRange(ver.major, ver.minor) :
+                        level == UPLEVEL_MINOR ? VersionRange(ver.major) :
+                        level == UPLEVEL_MAJOR ? VersionRange() :
+                            error("unexpected upgrade level: $level")
+                    pkg.version = VersionSpec(r)
+                end
             end
+        else
+            pkg.version = VersionSpec()
         end
     end
     # resolve & apply package versions
